@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+
+require 'open-uri'
+require 'nokogiri'
+
+# Generate a nagios wms monitoring string which can be used by the ogc nagios plugin
+#
+# == Params
+# - wms which ends in a question mark
+#
+def nagios_wms_command(wms)
+  doc = Nokogiri::HTML(open("#{wms}SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities"))
+
+  layers = doc.css("layer name").map { |e| e.text }.join(',')
+  bboxes = doc.css('boundingbox[crs="EPSG:4326"]')
+  bbox = bboxes[0]
+
+  # The ordering miny,minx,maxy,maxx is reversed as the monitoring will request using
+  # wms VERSION=1.1.1
+  bboxT = ['miny', 'minx', 'maxy', 'maxx'].map { |p| bbox.attr(p).to_f.round(2) }.join(',')
+
+  return "#{wms}!#{bboxT}!#{layers}"
+end
+
+# Read a local file named wms_services.
+File.readlines('wms_services').each { |line| 
+  begin
+    puts nagios_wms_command(line.strip)
+  rescue StandardError => bang
+    puts bang
+  end
+}
